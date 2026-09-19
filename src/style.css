@@ -14,6 +14,7 @@ img { display:block; width:100%; object-fit:cover; }
 .brand { display:flex; align-items:center; gap:10px; font-weight:500; line-height:1.1; letter-spacing:.12em; }
 .brand small { color:#a9b4a5; font-size:7px; letter-spacing:.09em; }
 .brand-mark { display:grid; place-items:center; width:29px; height:29px; border:1px solid rgba(232,232,223,.7); border-radius:50%; font:17px var(--serif); }
+.brand-mark svg { width:19px; height:19px; }
 nav { display:flex; gap:31px; color:#c7cec5; } nav a:hover { color:var(--lime); }
 .header-actions { display:flex; align-items:center; gap:24px; } .language-switch { display:flex; align-items:center; gap:7px; color:#a9b4a5; } .language-switch button { padding:0; border:0; color:inherit; background:transparent; cursor:pointer; font:10px var(--mono); } .language-switch button:hover,.language-switch button.active { color:var(--lime); } .language-switch span { color:#657266; }
 

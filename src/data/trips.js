@@ -13,7 +13,7 @@
 // CATATAN: foto & tanggal di bawah masih CONTOH (placeholder). Ganti dengan milikmu.
 
 export const site = {
-  owner: 'Pahrurozi',
+  owner: 'Langkah',
   since: 2024,
 }
 

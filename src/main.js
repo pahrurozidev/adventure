@@ -52,7 +52,7 @@ function readStoredLanguage() {
 function header() {
   return `
   <header class="site-header">
-    <a class="brand" href="#top" aria-label="${site.owner}"><span class="brand-mark">${site.owner[0]}</span><span>${site.owner.toUpperCase()}<br><small>${t('brandSub')}</small></span></a>
+    <a class="brand" href="#top" aria-label="${site.owner}"><span class="brand-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="7" r="1.8" fill="var(--lime)"/><path d="M3 18 9 10.5l3 3.7" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/><path d="M7 18 14 7.5 21 18Z" fill="currentColor"/></svg></span><span>${site.owner.toUpperCase()}<br><small>${t('brandSub')}</small></span></a>
     <nav aria-label="${t('navLabel')}"><a href="#about">${t('navAbout')}</a><a href="#seven-summit">${t('navSummit')}</a><a href="#journeys">${t('navJourneys')}</a></nav>
     <div class="header-actions"><div class="language-switch" aria-label="${t('langLabel')}"><button type="button" data-language="id" class="${lang === 'id' ? 'active' : ''}">ID</button><span>/</span><button type="button" data-language="en" class="${lang === 'en' ? 'active' : ''}">EN</button></div></div>
   </header>`
