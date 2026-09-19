@@ -1,99 +1,281 @@
 import './style.css'
+import { site, summits, journeys } from './data/trips.js'
+import { dict } from './i18n.js'
 
-document.querySelector('#app').innerHTML = `
+const app = document.querySelector('#app')
+const allTrips = [...summits, ...journeys]
+
+let lang = readStoredLanguage()
+let view = null
+let lightboxIndex = 0
+
+const t = (key) => dict[lang][key]
+const L = (value) => (value && typeof value === 'object' ? value[lang] ?? value.id : value ?? '')
+const asset = (src) => (/^https?:\/\//.test(src) ? src : import.meta.env.BASE_URL + src.replace(/^\//, ''))
+const isVisited = (trip) => Boolean(trip.date)
+const pad = (n) => String(n).padStart(2, '0')
+const elevation = (trip) => (trip.elevation ? `${trip.elevation.toLocaleString(lang === 'id' ? 'id-ID' : 'en-US')} ${t('masl')}` : '')
+const elevationLine = (trip) => (trip.elevation ? `<p class="card-elev">▲ ${elevation(trip)}</p>` : '')
+const visitedTrips = () => allTrips.filter(isVisited)
+
+function formatCoord(value, pos, neg) {
+  const abs = Math.abs(value)
+  const deg = Math.floor(abs)
+  const min = (abs - deg) * 60
+  return `${pad(deg)}° ${min.toFixed(2).padStart(5, '0')}′ ${value < 0 ? neg : pos}`
+}
+
+function mapSection(trip) {
+  if (!trip.coords) return ''
+  const [lat, lon] = trip.coords
+  const d = 0.018
+  const bbox = [lon - d, lat - d * 0.75, lon + d, lat + d * 0.75].map((n) => n.toFixed(5)).join('%2C')
+  const src = `https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${lat}%2C${lon}`
+  return `
+    <section class="section-wrap trip-map">
+      <div class="trip-map-head">
+        <div><div class="section-kicker">${t('mapKicker')}</div><p class="trip-map-coord">${formatCoord(lat, 'N', 'S')}  /  ${formatCoord(lon, 'E', 'W')}</p></div>
+        <a class="text-link" href="https://www.google.com/maps/search/?api=1&query=${lat},${lon}" target="_blank" rel="noopener">${t('openMap')} <span>↗</span></a>
+      </div>
+      <div class="trip-map-frame"><iframe src="${src}" title="${t('mapTitle')(trip.name)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe></div>
+    </section>`
+}
+
+function formatDate(iso) {
+  return new Date(`${iso}T00:00:00`).toLocaleDateString(lang === 'id' ? 'id-ID' : 'en-GB', { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+function readStoredLanguage() {
+  try { return localStorage.getItem('journal-language') === 'en' ? 'en' : 'id' } catch { return 'id' }
+}
+
+function header() {
+  return `
   <header class="site-header">
-    <a class="brand" href="#top" aria-label="Rimba home"><span class="brand-mark">R</span><span>RIMBA<br><small>EXPEDITION CLUB</small></span></a>
-    <nav aria-label="Navigasi utama"><a href="#manifesto">Manifesto</a><a href="#journal">Journal</a><a href="#gallery">Archive</a></nav>
-    <div class="header-actions"><div class="language-switch" aria-label="Pilih bahasa"><button type="button" data-language="id">ID</button><span>/</span><button type="button" data-language="en">EN</button></div><a class="header-link" href="#join">Join the circle <span>↗</span></a></div>
-  </header>
+    <a class="brand" href="#top" aria-label="${site.owner}"><span class="brand-mark">${site.owner[0]}</span><span>${site.owner.toUpperCase()}<br><small>${t('brandSub')}</small></span></a>
+    <nav aria-label="${t('navLabel')}"><a href="#about">${t('navAbout')}</a><a href="#seven-summit">${t('navSummit')}</a><a href="#journeys">${t('navJourneys')}</a></nav>
+    <div class="header-actions"><div class="language-switch" aria-label="${t('langLabel')}"><button type="button" data-language="id" class="${lang === 'id' ? 'active' : ''}">ID</button><span>/</span><button type="button" data-language="en" class="${lang === 'en' ? 'active' : ''}">EN</button></div></div>
+  </header>`
+}
 
+function footer() {
+  return `<footer><span>© ${new Date().getFullYear()} ${site.owner.toUpperCase()}</span><span>${t('footerTagline')}</span><a href="#top">${t('backTop')}</a></footer>`
+}
+
+function summitCard(trip, index) {
+  const no = `${pad(index + 1)} / 07`
+  if (!isVisited(trip)) {
+    return `
+    <article class="summit-card is-soon" tabindex="0" aria-label="${trip.name}, ${t('comingSoon')}">
+      <span class="summit-no">${no}</span>
+      <div class="soon-mark"><i>✳</i>${t('comingSoon')}</div>
+      <div class="card-info"><h3>${trip.name}</h3><div class="card-more"><div><span>${t('notYet')}</span>${elevationLine(trip)}<p>${L(trip.location)}</p></div></div></div>
+    </article>`
+  }
+  return `
+  <a class="summit-card" href="#/trip/${trip.slug}" aria-label="${trip.name}, ${formatDate(trip.date)}">
+    <img src="${asset(trip.cover)}" alt="" loading="lazy">
+    <span class="summit-no">${no}</span><span class="summit-check">✓ ${t('summited')}</span>
+    <div class="card-info"><h3>${trip.name}</h3><div class="card-more"><div><span>${formatDate(trip.date)}</span>${elevationLine(trip)}<p>${L(trip.location)} <b>↗</b></p></div></div></div>
+  </a>`
+}
+
+function journeyCard(trip) {
+  return `
+  <a class="journey-card" href="#/trip/${trip.slug}" aria-label="${trip.name}, ${formatDate(trip.date)}">
+    <img src="${asset(trip.cover)}" alt="" loading="lazy">
+    <span class="journey-tag">${L(trip.category)}</span>
+    <div class="card-info"><h3>${trip.name}</h3><div class="card-more"><div><span>${formatDate(trip.date)}</span><p>${L(trip.location)} <b>↗</b></p></div></div></div>
+  </a>`
+}
+
+function homeView() {
+  const summitsDone = summits.filter(isVisited).length
+  const nextSummit = summits.filter((trip) => !isVisited(trip)).sort((a, b) => a.elevation - b.elevation)[0]
+  const sortedJourneys = journeys.filter(isVisited).sort((a, b) => b.date.localeCompare(a.date))
+  const photoCount = visitedTrips().reduce((total, trip) => total + (trip.photos?.length ?? 0), 0)
+  const ticker = t('ticker').map((word) => `<span>${word}</span>`).join('<i>✳</i>')
+
+  return `
+  ${header()}
   <main id="top">
     <section class="hero-section">
       <div class="hero-copy">
-        <p class="eyebrow"><span class="eyebrow-line"></span> FIELD NOTE  /  07 — EAST JAVA</p>
-        <h1>Go where<br>the map <em>ends.</em></h1>
-        <p class="hero-intro">A slow practice of going higher, looking closer, and finding what only appears when you leave certainty behind.</p>
-        <a class="round-cta" href="#journal"><span>Explore<br>the journal</span><b>↓</b></a>
+        <p class="eyebrow"><span class="eyebrow-line"></span> ${t('heroEyebrow')}</p>
+        <h1>${t('heroTitle')}</h1>
+        <p class="hero-intro">${t('heroIntro')}</p>
+        <a class="round-cta" href="#seven-summit"><span>${t('heroCta')}</span><b>↓</b></a>
       </div>
-      <div class="hero-photo"><img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1800&q=85" alt="Pegunungan berkabut saat matahari terbit"><span class="photo-label">BROMO, INDONESIA<br><strong>07° 56′ S  /  112° 57′ E</strong></span><span class="image-stamp">01</span></div>
-      <div class="hero-side-note">THE WILD IS<br>NOT EMPTY.<br><span>IT IS UNREAD.</span></div>
+      <div class="hero-photo"><img src="https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1800&q=85" alt=""><span class="photo-label">SEMBALUN, LOMBOK<br><strong>08° 22′ S  /  116° 32′ E</strong></span><span class="image-stamp">${pad(summitsDone)}/07</span></div>
+      <div class="hero-side-note">${t('heroSide')}</div>
     </section>
 
-    <section class="ticker" aria-label="Rimba values"><span>WALK SLOWLY</span><i>✳</i><span>LOOK DEEPLY</span><i>✳</i><span>RETURN CHANGED</span><i>✳</i><span>WALK SLOWLY</span></section>
+    <section class="ticker" aria-hidden="true">${ticker}</section>
 
-    <section class="manifesto section-wrap" id="manifesto">
-      <div class="section-kicker">01 / THE WHY</div>
-      <div class="manifesto-content"><p class="large-copy">The mountain doesn’t promise answers.<br><em>It teaches you how to ask better questions.</em></p><p class="body-copy">Rimba is a field journal for people who choose the longer way around. We document the quiet edges of the world — and the inner weather that changes when we meet them.</p><a class="text-link" href="#join">Read our manifesto <span>↗</span></a></div>
-      <div class="manifesto-aside"><div class="circle-mark">◎<small>KEEP<br>WANDERING</small></div><p>For the curious<br>and the committed.</p></div>
+    <section class="manifesto section-wrap" id="about">
+      <div class="section-kicker">${t('aboutKicker')}</div>
+      <div class="manifesto-content"><p class="large-copy">${t('aboutLarge')}</p><p class="body-copy">${t('aboutBody')}</p><a class="text-link" href="#seven-summit">${t('aboutLink')} <span>↗</span></a></div>
+      <div class="manifesto-aside"><div class="circle-mark">◎<small>${t('aboutCircle')}</small></div><p>${t('aboutAside')}</p></div>
     </section>
 
-    <section class="journal section-wrap" id="journal">
-      <div class="section-heading"><div><div class="section-kicker">02 / FIELD JOURNAL</div><h2>Stories from<br>the <em>edge.</em></h2></div><a class="text-link" href="#gallery">View all stories <span>↗</span></a></div>
-      <div class="journal-grid"><article class="journal-card feature"><img src="https://images.unsplash.com/photo-1551632811-561732d1e306?auto=format&fit=crop&w=1200&q=85" alt="Pendaki berjalan di jalur pegunungan"><div class="card-overlay"><span>01 / MOUNT RINJANI</span><h3>What the<br>silence gives you</h3><p>8 min read &nbsp; · &nbsp; 14.08.24</p></div></article><article class="journal-card"><img src="https://images.unsplash.com/photo-1522163182402-834f871fd851?auto=format&fit=crop&w=900&q=85" alt="Tangan memegang peta di alam"><div class="card-caption"><span>02 / WAY KAMBAS</span><h3>A map is a<br>conversation</h3><p>Field notes from the unknown</p></div></article><article class="journal-card journal-dark"><div class="quote-mark">“</div><blockquote>Risk is not the opposite of opportunity.<br><em>It is the entrance.</em></blockquote><span class="quote-by">— RIMBA FIELD NOTE #19</span></article></div>
+    <section class="summit-section" id="seven-summit">
+      <div class="section-wrap">
+        <div class="section-heading"><div><div class="section-kicker">${t('summitKicker')}</div><h2>${t('summitTitle')}</h2></div><p class="body-copy">${t('summitBody')}</p></div>
+        <div class="summit-grid">
+          ${summits.map(summitCard).join('')}
+          <div class="summit-progress">
+            <span class="section-kicker">${t('progress')}</span>
+            <strong>${summitsDone}<small>/7</small></strong>
+            <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="7" aria-valuenow="${summitsDone}"><i style="width:${(summitsDone / 7) * 100}%"></i></div>
+            <p>${summitsDone} ${t('ofSeven')}</p>
+          </div>
+        </div>
+      </div>
     </section>
 
-    <section class="stats-section"><div class="section-wrap stats"><div><strong>14</strong><span>PEAKS<br>REACHED</span></div><div><strong>263</strong><span>KM OF<br>TRAIL</span></div><div><strong>06</strong><span>COUNTRIES<br>EXPLORED</span></div><p>Every number is a story<br>we are still learning to tell.</p></div></section>
+    <section class="journeys section-wrap" id="journeys">
+      <div class="section-heading"><div><div class="section-kicker">${t('journeysKicker')}</div><h2>${t('journeysTitle')}</h2></div><p class="body-copy">${t('journeysBody')}</p></div>
+      <div class="journey-grid">${sortedJourneys.map(journeyCard).join('')}</div>
+    </section>
 
-    <section class="gallery section-wrap" id="gallery"><div class="section-heading"><div><div class="section-kicker">03 / VISUAL ARCHIVE</div><h2>Proof of<br><em>presence.</em></h2></div><p class="body-copy">A collection of moments that cannot be carried home, except in memory.</p></div><div class="gallery-grid"><figure class="gallery-tall"><img src="https://images.unsplash.com/photo-1500534623283-312aade485b7?auto=format&fit=crop&w=900&q=85" alt="Lembah hijau dari ketinggian"><figcaption>THE LONG WAY UP / 01</figcaption></figure><figure><img src="https://images.unsplash.com/photo-1486911278844-a81c5267e227?auto=format&fit=crop&w=900&q=85" alt="Puncak gunung bersalju"><figcaption>ABOVE THE CLOUDS / 02</figcaption></figure><figure><img src="https://images.unsplash.com/photo-1470770841072-f978cf4d019e?auto=format&fit=crop&w=900&q=85" alt="Danau dan pegunungan"><figcaption>THE STILL POINT / 03</figcaption></figure></div></section>
+    <section class="stats-section"><div class="section-wrap stats"><div><strong>${pad(visitedTrips().length)}</strong><span>${t('statPlaces')}</span></div><div><strong>${pad(summitsDone)}</strong><span>${t('statSummits')}</span></div><div><strong>${pad(photoCount)}</strong><span>${t('statPhotos')}</span></div><p>${t('statNote')}</p></div></section>
 
-    <section class="join-section" id="join"><div class="join-inner"><p class="eyebrow">THE NEXT EXPEDITION</p><h2>There is more<br>out <em>there.</em></h2><p>Get the next field note in your inbox. No noise, just a good story from somewhere far away.</p><form id="join-form"><input type="email" placeholder="your@email.com" aria-label="Email address" required><button type="submit">Join the circle <span>↗</span></button></form><small id="form-message" aria-live="polite"></small></div><div class="join-coordinate">07° 56′ S<br>112° 57′ E</div></section>
+    <section class="join-section"><div class="join-inner"><p class="eyebrow">${t('nextEyebrow')}</p><h2>${nextSummit ? t('nextTitle')(nextSummit.name) : t('doneTitle')}</h2><p>${nextSummit ? t('nextBody') : t('doneBody')}</p><a class="text-link" href="#seven-summit">${t('nextLink')} <span>↗</span></a></div><div class="join-coordinate">08° 22′ S<br>116° 32′ E</div></section>
   </main>
-  <footer><span>© 2025 RIMBA EXPEDITION CLUB</span><span>BUILT FOR THE IN-BETWEEN</span><a href="#top">BACK TO TOP ↑</a></footer>
-`
+  ${footer()}`
+}
 
-const translations = {
-  id: {
-    'nav[aria-label]': 'Navigasi utama',
-    'nav a:nth-child(1)': 'Manifesto', 'nav a:nth-child(2)': 'Jurnal', 'nav a:nth-child(3)': 'Arsip',
-    '.header-link': 'Gabung bersama <span>↗</span>',
-    '.eyebrow': '<span class="eyebrow-line"></span> CATATAN LAPANGAN  /  07 — JAWA TIMUR',
-    'h1': 'Pergi ke tempat<br>di mana peta <em>berakhir.</em>',
-    '.hero-intro': 'Sebuah praktik perlahan untuk mendaki lebih tinggi, melihat lebih dekat, dan menemukan apa yang hanya muncul saat kita meninggalkan kepastian.',
-    '.round-cta span': 'Jelajahi<br>jurnal', '.hero-side-note': 'ALAM LIAR<br>TIDAK KOSONG.<br><span>IA BELUM TERBACA.</span>',
-    '.ticker span:nth-of-type(1)': 'MELANGKAH PERLAHAN', '.ticker span:nth-of-type(2)': 'MELIHAT LEBIH DALAM', '.ticker span:nth-of-type(3)': 'PULANG BERUBAH', '.ticker span:nth-of-type(4)': 'MELANGKAH PERLAHAN',
-    '.manifesto > .section-kicker': '01 / ALASAN KAMI', '.large-copy': 'Gunung tidak menjanjikan jawaban.<br><em>Ia mengajari kita mengajukan pertanyaan yang lebih baik.</em>',
-    '.manifesto-content .body-copy': 'Rimba adalah jurnal lapangan bagi mereka yang memilih jalan memutar. Kami mendokumentasikan tepian dunia yang sunyi, dan cuaca batin yang berubah saat kita menjumpainya.',
-    '.manifesto-content .text-link': 'Baca manifesto kami <span>↗</span>', '.circle-mark small': 'TERUS<br>MENJELAJAH', '.manifesto-aside p': 'Untuk yang ingin tahu<br>dan yang berkomitmen.',
-    '.journal .section-kicker': '02 / JURNAL LAPANGAN', '.journal h2': 'Kisah dari<br><em>tepian.</em>', '.journal .section-heading .text-link': 'Lihat semua kisah <span>↗</span>',
-    '.feature .card-overlay span': '01 / GUNUNG RINJANI', '.feature .card-overlay h3': 'Apa yang<br>diberikan sunyi', '.feature .card-overlay p': '8 menit baca &nbsp; · &nbsp; 14.08.24', '.journal-card:nth-child(2) .card-caption span': '02 / WAY KAMBAS', '.journal-card:nth-child(2) .card-caption h3': 'Peta adalah<br>percakapan', '.journal-card:nth-child(2) .card-caption p': 'Catatan lapangan dari yang tak dikenal',
-    '.journal-dark blockquote': 'Risiko bukan lawan dari peluang.<br><em>Ia adalah pintunya.</em>', '.quote-by': '— CATATAN RIMBA #19',
-    '.stats div:nth-child(1) span': 'PUNCAK<br>TERCAPAI', '.stats div:nth-child(2) span': 'KM<br>JALUR', '.stats div:nth-child(3) span': 'NEGARA<br>DIJELAJAHI', '.stats p': 'Setiap angka adalah kisah<br>yang masih kami pelajari cara menceritakannya.',
-    '.gallery .section-kicker': '03 / ARSIP VISUAL', '.gallery h2': 'Bukti<br><em>kehadiran.</em>', '.gallery .body-copy': 'Kumpulan momen yang tidak dapat dibawa pulang, kecuali dalam ingatan.', '.gallery figure:nth-child(1) figcaption': 'JALAN PANJANG KE ATAS / 01', '.gallery figure:nth-child(2) figcaption': 'DI ATAS AWAN / 02', '.gallery figure:nth-child(3) figcaption': 'TITIK HENING / 03',
-    '.join-section .eyebrow': 'EKSPEDISI BERIKUTNYA', '.join-section h2': 'Masih banyak<br>yang ada<br>di <em>luar sana.</em>', '.join-section p:not(.eyebrow)': 'Dapatkan catatan lapangan berikutnya di kotak masukmu. Tanpa bising, hanya cerita baik dari tempat yang jauh.',
-    '#join-form input': 'email@kamu.com', '#join-form button': 'Gabung bersama <span>↗</span>', 'footer span:nth-child(2)': 'DIBUAT UNTUK YANG DI ANTARA', 'footer a': 'KEMBALI KE ATAS ↑'
-  },
-  en: {
-    'nav[aria-label]': 'Main navigation', 'nav a:nth-child(1)': 'Manifesto', 'nav a:nth-child(2)': 'Journal', 'nav a:nth-child(3)': 'Archive',
-    '.header-link': 'Join the circle <span>↗</span>', '.eyebrow': '<span class="eyebrow-line"></span> FIELD NOTE  /  07 — EAST JAVA', 'h1': 'Go where<br>the map <em>ends.</em>',
-    '.hero-intro': 'A slow practice of going higher, looking closer, and finding what only appears when you leave certainty behind.', '.round-cta span': 'Explore<br>the journal', '.hero-side-note': 'THE WILD IS<br>NOT EMPTY.<br><span>IT IS UNREAD.</span>',
-    '.ticker span:nth-of-type(1)': 'WALK SLOWLY', '.ticker span:nth-of-type(2)': 'LOOK DEEPLY', '.ticker span:nth-of-type(3)': 'RETURN CHANGED', '.ticker span:nth-of-type(4)': 'WALK SLOWLY', '.manifesto > .section-kicker': '01 / THE WHY',
-    '.large-copy': 'The mountain doesn’t promise answers.<br><em>It teaches you how to ask better questions.</em>', '.manifesto-content .body-copy': 'Rimba is a field journal for people who choose the longer way around. We document the quiet edges of the world, and the inner weather that changes when we meet them.',
-    '.manifesto-content .text-link': 'Read our manifesto <span>↗</span>', '.circle-mark small': 'KEEP<br>WANDERING', '.manifesto-aside p': 'For the curious<br>and the committed.', '.journal .section-kicker': '02 / FIELD JOURNAL', '.journal h2': 'Stories from<br>the <em>edge.</em>', '.journal .section-heading .text-link': 'View all stories <span>↗</span>',
-    '.feature .card-overlay span': '01 / MOUNT RINJANI', '.feature .card-overlay h3': 'What the<br>silence gives you', '.feature .card-overlay p': '8 min read &nbsp; · &nbsp; 14.08.24', '.journal-card:nth-child(2) .card-caption span': '02 / WAY KAMBAS', '.journal-card:nth-child(2) .card-caption h3': 'A map is a<br>conversation', '.journal-card:nth-child(2) .card-caption p': 'Field notes from the unknown', '.journal-dark blockquote': 'Risk is not the opposite of opportunity.<br><em>It is the entrance.</em>', '.quote-by': '— RIMBA FIELD NOTE #19',
-    '.stats div:nth-child(1) span': 'PEAKS<br>REACHED', '.stats div:nth-child(2) span': 'KM OF<br>TRAIL', '.stats div:nth-child(3) span': 'COUNTRIES<br>EXPLORED', '.stats p': 'Every number is a story<br>we are still learning to tell.', '.gallery .section-kicker': '03 / VISUAL ARCHIVE', '.gallery h2': 'Proof of<br><em>presence.</em>', '.gallery .body-copy': 'A collection of moments that cannot be carried home, except in memory.', '.gallery figure:nth-child(1) figcaption': 'THE LONG WAY UP / 01', '.gallery figure:nth-child(2) figcaption': 'ABOVE THE CLOUDS / 02', '.gallery figure:nth-child(3) figcaption': 'THE STILL POINT / 03',
-    '.join-section .eyebrow': 'THE NEXT EXPEDITION', '.join-section h2': 'There is more<br>out <em>there.</em>', '.join-section p:not(.eyebrow)': 'Get the next field note in your inbox. No noise, just a good story from somewhere far away.', '#join-form input': 'your@email.com', '#join-form button': 'Join the circle <span>↗</span>', 'footer span:nth-child(2)': 'BUILT FOR THE IN-BETWEEN', 'footer a': 'BACK TO TOP ↑'
+function detailView(trip) {
+  const list = visitedTrips()
+  const index = list.indexOf(trip)
+  const prev = list[(index - 1 + list.length) % list.length]
+  const next = list[(index + 1) % list.length]
+  const summitIndex = summits.indexOf(trip)
+  const kicker = summitIndex >= 0 ? `SEVEN SUMMIT SEMBALUN  ·  ${pad(summitIndex + 1)} / 07` : L(trip.category).toUpperCase()
+  const backHref = summitIndex >= 0 ? '#seven-summit' : '#journeys'
+  const photos = trip.photos ?? []
+
+  return `
+  ${header()}
+  <main id="top" class="detail">
+    <section class="detail-hero">
+      <img src="${asset(trip.cover)}" alt="">
+      <div class="detail-hero-copy">
+        <a class="back-link" href="${backHref}">← ${t('back')}</a>
+        <p class="eyebrow"><span class="eyebrow-line"></span> ${kicker}</p>
+        <h1>${trip.name}</h1>
+        <dl class="detail-meta">
+          <div><dt>${t('visited')}</dt><dd>${formatDate(trip.date)}</dd></div>
+          <div><dt>${t('place')}</dt><dd>${L(trip.location)}</dd></div>
+          ${trip.elevation ? `<div><dt>${t('height')}</dt><dd>${elevation(trip)}</dd></div>` : ''}
+          <div><dt>${t('photos')}</dt><dd>${pad(photos.length)}</dd></div>
+        </dl>
+      </div>
+    </section>
+
+    <section class="section-wrap detail-body">
+      ${trip.story ? `<p class="large-copy detail-story">${L(trip.story)}</p>` : ''}
+      <h2 class="visually-hidden">${t('gallery')}</h2>
+      <div class="photo-grid">
+        ${photos.map((photo, i) => `<figure><button type="button" class="photo-item" data-photo="${i}"><img src="${asset(photo.src)}" alt="${L(photo.caption) || `${trip.name} ${i + 1}`}" loading="lazy"></button><figcaption>${pad(i + 1)}${photo.caption ? `  /  ${L(photo.caption)}` : ''}</figcaption></figure>`).join('')}
+      </div>
+    </section>
+
+    ${mapSection(trip)}
+
+    ${list.length > 1 ? `
+    <nav class="trip-pager section-wrap" aria-label="${t('prevTrip')} / ${t('nextTrip')}">
+      <a href="#/trip/${prev.slug}"><span>← ${t('prevTrip')}</span><strong>${prev.name}</strong></a>
+      <a href="#/trip/${next.slug}"><span>${t('nextTrip')} →</span><strong>${next.name}</strong></a>
+    </nav>` : ''}
+  </main>
+  ${footer()}
+  <dialog class="lightbox" aria-label="${trip.name}">
+    <button type="button" class="lightbox-close" data-lightbox="close" aria-label="${t('close')}">✕</button>
+    <button type="button" class="lightbox-nav prev" data-lightbox="prev" aria-label="${t('prevPhoto')}">←</button>
+    <figure><img alt=""><figcaption></figcaption></figure>
+    <button type="button" class="lightbox-nav next" data-lightbox="next" aria-label="${t('nextPhoto')}">→</button>
+  </dialog>`
+}
+
+function notFoundView() {
+  return `
+  ${header()}
+  <main id="top" class="detail">
+    <section class="detail-hero is-empty">
+      <div class="detail-hero-copy">
+        <a class="back-link" href="#seven-summit">← ${t('back')}</a>
+        <h1>${t('notFoundTitle')}</h1>
+        <p class="hero-intro">${t('notFoundBody')}</p>
+      </div>
+    </section>
+  </main>
+  ${footer()}`
+}
+
+function currentTrip() {
+  const match = location.hash.match(/^#\/trip\/([\w-]+)/)
+  return match ? allTrips.find((trip) => trip.slug === match[1]) ?? null : undefined
+}
+
+function render({ keepScroll = false } = {}) {
+  const trip = currentTrip()
+  const nextView = trip === undefined ? 'home' : `trip:${trip?.slug ?? 'missing'}`
+
+  // Anchor links on the home page are handled natively by the browser.
+  if (!keepScroll && nextView === 'home' && view === 'home') return
+
+  const scrollY = window.scrollY
+  if (trip === undefined) app.innerHTML = homeView()
+  else if (trip && isVisited(trip)) app.innerHTML = detailView(trip)
+  else app.innerHTML = notFoundView()
+
+  document.documentElement.lang = lang
+  document.title = trip ? `${trip.name} — ${site.owner}` : `${site.owner} — ${dict[lang].brandSub.toLowerCase()}`
+
+  if (keepScroll) window.scrollTo(0, scrollY)
+  else if (nextView === 'home' && location.hash.length > 1) document.getElementById(location.hash.slice(1))?.scrollIntoView()
+  else window.scrollTo(0, 0)
+  view = nextView
+}
+
+function showPhoto(index) {
+  const trip = currentTrip()
+  const dialog = app.querySelector('.lightbox')
+  if (!trip || !dialog) return
+  const photos = trip.photos
+  lightboxIndex = (index + photos.length) % photos.length
+  const photo = photos[lightboxIndex]
+  dialog.querySelector('img').src = asset(photo.src)
+  dialog.querySelector('img').alt = L(photo.caption) || trip.name
+  dialog.querySelector('figcaption').textContent = `${pad(lightboxIndex + 1)} / ${pad(photos.length)}${photo.caption ? `  ·  ${L(photo.caption)}` : ''}`
+  if (!dialog.open) dialog.showModal()
+}
+
+app.addEventListener('click', (event) => {
+  const languageButton = event.target.closest('[data-language]')
+  if (languageButton) {
+    lang = languageButton.dataset.language
+    try { localStorage.setItem('journal-language', lang) } catch {}
+    render({ keepScroll: true })
+    return
   }
-}
 
-function setLanguage(language) {
-  Object.entries(translations[language]).forEach(([selector, content]) => {
-    const element = document.querySelector(selector)
-    if (!element) return
-    if (selector === '#join-form input') element.placeholder = content
-    else if (selector === 'nav[aria-label]') element.setAttribute('aria-label', content)
-    else element.innerHTML = content
-  })
-  document.documentElement.lang = language
-  document.querySelectorAll('[data-language]').forEach((button) => button.classList.toggle('active', button.dataset.language === language))
-  localStorage.setItem('rimba-language', language)
-}
+  const photoButton = event.target.closest('[data-photo]')
+  if (photoButton) return showPhoto(Number(photoButton.dataset.photo))
 
-document.querySelectorAll('[data-language]').forEach((button) => button.addEventListener('click', () => setLanguage(button.dataset.language)))
-setLanguage(localStorage.getItem('rimba-language') || 'id')
-
-document.querySelector('#join-form').addEventListener('submit', (event) => {
-  event.preventDefault()
-  const language = document.documentElement.lang
-  document.querySelector('#form-message').textContent = language === 'id' ? 'Kamu sudah terdaftar. Catatan berikutnya segera hadir.' : 'You are on the list. The next note is coming.'
-  event.currentTarget.reset()
+  const lightboxAction = event.target.closest('[data-lightbox]')?.dataset.lightbox
+  const dialog = app.querySelector('.lightbox')
+  if (lightboxAction === 'close' || event.target === dialog) dialog.close()
+  else if (lightboxAction === 'prev') showPhoto(lightboxIndex - 1)
+  else if (lightboxAction === 'next') showPhoto(lightboxIndex + 1)
 })
+
+document.addEventListener('keydown', (event) => {
+  if (!app.querySelector('.lightbox[open]')) return
+  if (event.key === 'ArrowLeft') showPhoto(lightboxIndex - 1)
+  if (event.key === 'ArrowRight') showPhoto(lightboxIndex + 1)
+})
+
+window.addEventListener('hashchange', () => render())
+render()
